@@ -215,5 +215,158 @@
             ctx.beginPath();
             ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h);
             ctx.stroke();
-
+            if (dataPoints.length === 0) return;
+            const scaleX = w / 30; // +/- 15 milliseconds horizontal range view
+            const stepY = 2.5; // spacing step spacing size per row marker down
+            for (let i = 0; i < dataPoints.length; i++) {
+            const pt = dataPoints[i];
+            const x = (w / 2) + (pt.drift * scaleX);
+            const y = h - 30 - ((dataPoints.length - 1 - i) * stepY);
+            if (y < 0) continue; // Out of graphic canvas space clipping safety
+            ctx.beginPath();
+            ctx.arc(x, y, 1.8, 0, 2 * Math.PI);
+            ctx.fillStyle = pt.isTick ? '#38bdf8' : '#f43f5e'; // Dual color stream channels
+            ctx.fill();
+            }
+    }
+// --- HARDWARE NATIVE MICROPHONE ANALYSER SYSTEM ---
+async function startAcousticCapture() {
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+audioCtx = new AudioContextClass();
+if (audioCtx.state === 'suspended') {
+await audioCtx.resume();
+}
+// Request specialized high-sampling hardware pipeline access bypasses standard phone compression filters
+const constraints = {
+audio: {
+echoCancellation: false,
+noiseSuppression: false,
+autoGainControl: false,
+channelCount: 1,
+sampleRate: 44100
+}
+};
+const stream = await navigator.mediaDevices.getUserMedia(constraints);
+const source = audioCtx.createMediaStreamSource(stream);
+// Build sharp hardware highpass filter layer to eliminate room humming noises
+const highpass = audioCtx.createBiquadFilter();
+highpass.type = "highpass";
+highpass.frequency.value = 1200;
+// Script processing structural framework architecture
+processor = audioCtx.createScriptProcessor(1024, 1, 1);
+let noiseFloor = 0.02;
+let lockoutCounter = 0;
+processor.onaudioprocess = function(e) {
+const input = e.inputBuffer.getChannelData(0);
+const len = input.length;
+if (lockoutCounter > 0) {
+lockoutCounter -= len;
+}
+for (let i = 0; i < len; i++) {
+const sample = Math.abs(input[i]);
+// Auto adjustments baseline decay algorithm updates
+if (sample > noiseFloor) {
+noiseFloor = noiseFloor * 0.999 + sample * 0.001;
+} else {
+noiseFloor = noiseFloor * 0.9995 + sample * 0.0005;
+}
+// Transient dynamic window gate validation trigger spikes
+const triggerThreshold = Math.max(0.04, noiseFloor * 4.5);
+if (sample > triggerThreshold && lockoutCounter <= 0) {
+const preciseOffsetTime = audioCtx.currentTime * 1000 + ((i / e.inputBuffer.sampleRate) * 1000);
+// Main thread delivery safely decoupled from hardware stream hooks
+requestAnimationFrame(() => {
+signalVal.innerText = "⭐ CAPTURE";
+signalVal.className = "text-xs font-bold text-emerald-400 pt-1";
+registerTickEvent(preciseOffsetTime);
+});
+lockoutCounter = 44100 * 0.12; // 120ms anti-bounce gate lock window
+break;
+}
+}
+if (lockoutCounter <= 0 && Math.random() < 0.02) {
+requestAnimationFrame(() => {
+signalVal.innerText = "LISTENING";
+signalVal.className = "text-xs font-bold text-cyan-400 pt-1";
+});
+}
+};
+source.connect(highpass);
+highpass.connect(processor);
+processor.connect(audioCtx.destination);
+// Secure wake locks protecting software execution dropouts
+if ('wakeLock' in navigator) {
+try { wakeLock = await navigator.wakeLock.request('screen'); } catch(err){}
+}
+}
+function stopAcousticCapture() {
+if (processor) processor.disconnect();
+if (audioCtx) audioCtx.close();
+if (wakeLock) wakeLock.release();
+processor = null;
+audioCtx = null;
+wakeLock = null;
+signalVal.innerText = "IDLE";
+signalVal.className = "text-xs font-bold text-amber-400 pt-1";
+}
+// --- HARDWARE INTERACTION ROUTERS BUTTON HANDLERS ---
+startBtn.addEventListener('click', async () => {
+if (isSimulating) stopSimulation();
+if (!isRunning) {
+try {
+await startAcousticCapture();
+isRunning = true;
+startBtn.innerText = "🛑 Stop Listening";
+startBtn.className = "flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl transition duration-150 active:scale-95 text-center shadow-lg";
+clearMetrics();
+} catch (err) {
+alert("Microphone configuration access blocked or unsupported: " + err.message);
+}
+} else {
+stopAcousticCapture();
+isRunning = false;
+startBtn.innerText = "🎤 Listen to Watch";
+startBtn.className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition duration-150 active:scale-95 text-center shadow-lg";
+}
+});
+// --- EMBEDDED TEST WORKFLOW MOVEMENT SIMULATOR ---
+function startSimulation() {
+isSimulating = true;
+simBtn.innerText = "🛑 Stop Sim";
+simBtn.className = "flex-1 bg-rose-950 text-rose-300 font-bold py-3 rounded-xl border border-rose-800 transition duration-150";
+clearMetrics();
+let simSimulatedClockTime = performance.now();
+// Injects a deliberate structural +4 seconds/day gain and a 1.2ms beat mismatch offset parameters
+const simulatedDriftRatePerBeat = (4 / 86400) * expectedIntervalMs;
+const errorBeatOffsetShift = 1.2;
+function loop() {
+if (!isSimulating) return;
+const currentSequenceIsOdd = tickTockHistory.length % 2 === 0;
+const dynamicIntervalModifier = currentSequenceIsOdd ? (expectedIntervalMs + errorBeatOffsetShift) : (expectedIntervalMs - errorBeatOffsetShift);
+const targetDeliveryTime = dynamicIntervalModifier + simulatedDriftRatePerBeat + (Math.random() * 0.2 - 0.1); // Add a small amount of ambient noise jitter
+simSimulatedClockTime += targetDeliveryTime;
+signalVal.innerText = "⚙️ SIMULATOR";
+signalVal.className = "text-xs font-bold text-purple-400 pt-1";
+registerTickEvent(simSimulatedClockTime);
+simulationTimer = setTimeout(loop, expectedIntervalMs);
+}
+loop();
+}
+function stopSimulation() {
+isSimulating = false;
+clearTimeout(simulationTimer);
+simBtn.innerText = "⚙️ Run Simulator";
+simBtn.className = "flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 rounded-xl transition duration-150 active:scale-95 text-center";
+signalVal.innerText = "IDLE";
+signalVal.className = "text-xs font-bold text-amber-400 pt-1";
+}
+simBtn.addEventListener('click', () => {
+if (isRunning) {
+stopAcousticCapture();
+isRunning = false;
+startBtn.innerText = "🎤 Listen to Watch";
+startBtn.className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition duration-150 active:scale-95 text-center shadow-lg";
+}
+if (!isSimulating) startSimulation(); else stopSimulation();
+});
 
