@@ -1,1 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Watch Timegrapher</title>
+    <!-- iOS App Configuration -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Timegrapher">
+    <link rel="apple-touch-icon" href="https://flaticon.com">
+    
+    <!-- Inline Web Manifest for PWA installation -->
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkFjb3VzdGljIFdhdGNoIFRpbWVncmFwaGVyIiwKICAic2hvcnRfbmFtZSI6ICJUaW1lZ3JhcGhlciIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMGIwZjE5IiwKICAidGhlbWVfY29sb3IiOiAiIzBiMGYxOSIKfQ==">
+
+    <script src="https://tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #f3f4f6;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden font-sans">
+
+    <!-- Header bar -->
+    <header class="bg-[#111827] border-b border-gray-800 p-4 pt-8 flex justify-between items-center shrink-0">
+        <h1 class="text-lg font-bold tracking-wide text-cyan-400">⌚ ChronoGraph PWA</h1>
+        <div class="flex items-center space-x-2">
+            <label for="bphSelect" class="text-xs text-gray-400">Target BPH:</label>
+            <select id="bphSelect" class="bg-gray-800 text-sm rounded border border-gray-700 px-2 py-1 text-white focus:outline-none">
+                <option value="18000">18,000 (Vintage)</option>
+                <option value="21600">21,600 (Seiko 7S)</option>
+                <option value="25200">25,200 (Omega Co-Axial)</option>
+                <option value="28800" selected>28,800 (ETA 2824 / Rolex)</option>
+                <option value="36000">36,000 (Hi-Beat)</option>
+            </select>
+        </div>
+    </header>
+
+    <!-- Metrics Matrix Dashboard -->
+    <section class="grid grid-cols-3 gap-2 p-3 bg-[#0d1321] shrink-0 text-center">
+        <div class="bg-[#172033] p-2 rounded-lg border border-gray-800">
+            <div class="text-xs text-gray-400 uppercase font-semibold">Rate Error</div>
+            <div id="rateVal" class="text-xl font-bold text-emerald-400">-- s/d</div>
+        </div>
+        <div class="bg-[#172033] p-2 rounded-lg border border-gray-800">
+            <div class="text-xs text-gray-400 uppercase font-semibold">Beat Error</div>
+            <div id="beatVal" class="text-xl font-bold text-cyan-400">-- ms</div>
+        </div>
+        <div class="bg-[#172033] p-2 rounded-lg border border-gray-800">
+            <div class="text-xs text-gray-400 uppercase font-semibold">Signal</div>
+            <div id="signalVal" class="text-xs font-bold text-amber-400 pt-1">IDLE</div>
+        </div>
+    </section>
+
+    <!-- Visual Trace Chart Canvas Area -->
+    <main class="flex-1 relative bg-[#040814] m-3 rounded-xl border border-gray-800 overflow-hidden shadow-inner">
+        <canvas id="timegrapherCanvas" class="w-full h-full block"></canvas>
+        <div class="absolute top-2 left-2 text-[10px] text-gray-600 pointer-events-none uppercase tracking-wider">
+            Double stream trace waterfall (+/- 15ms windows)
+        </div>
+    </main>
+
+    <!-- App System Controller Controls -->
+    <footer class="p-4 bg-[#111827] border-t border-gray-800 shrink-0 flex flex-col space-y-3 pb-6">
+        <div class="flex space-x-2">
+            <button id="startBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition duration-150 active:scale-95 text-center shadow-lg">
+                🎤 Listen to Watch
+            </button>
+            <button id="simBtn" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 rounded-xl transition duration-150 active:scale-95 text-center">
+                ⚙️ Run Simulator
+            </button>
+        </div>
+        <p class="text-center text-[11px] text-gray-500">
+            💡 For best results, tape a pair of wired Apple EarPods mic tightly against the watch caseback.
+        </p>
+    </footer>
+
+    <!-- Service Worker Script Registration for Offline Support -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'tg-v1';
+                self.addEventListener('install', e => {
+                    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(['./'])));
+                });
+                self.addEventListener('fetch', e => {
+                    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+                });
+            `;
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            navigator.serviceWorker.register(URL.createObjectURL(blob));
+        }
+    </script>
+
+    <!-- Main Logic Script -->
+    <script>
+        // DOM Elements
+        const canvas = document.getElementById('timegrapherCanvas');
+        const ctx = canvas.getContext('2d');
+        const rateVal = document.getElementById('rateVal');
+        const beatVal = document.getElementById('beatVal');
+        const signalVal = document.getElementById('signalVal');
+        const startBtn = document.getElementById('startBtn');
+        const simBtn = document.getElementById('simBtn');
+        const bphSelect = document.getElementById('bphSelect');
+
+        // Application State Engine vars
+        let isRunning = false;
+        let isSimulating = false;
+        let audioCtx = null;
+        let processor = null;
+        let wakeLock = null;
+        let dataPoints = [];
+        
+        // Timing Configurations Variables
+        let targetBph = parseInt(bphSelect.value);
+        let expectedIntervalMs = 3600000 / targetBph;
+        
+        let lastEventTime = 0;
+        let tickTockHistory = [];
+        let simulationTimer = null;
+
+        // Resize Canvas dynamically to match layout changes
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.parentElement.clientHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            renderTrace();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        setTimeout(resizeCanvas, 100);
+
+        bphSelect.addEventListener('change', () => {
+            targetBph = parseInt(bphSelect.value);
+            expectedIntervalMs = 3600000 / targetBph;
+            clearMetrics();
+        });
+
+        function clearMetrics() {
+            dataPoints = [];
+            tickTockHistory = [];
+            rateVal.innerText = "-- s/d";
+            beatVal.innerText = "-- ms";
+            renderTrace();
+        }
+
+        // --- CORE MATH ENGINE & ANALYSIS ---
+        function registerTickEvent(timestampMs) {
+            if (lastEventTime === 0) {
+                lastEventTime = timestampMs;
+                return;
+            }
+
+            const actualDelta = timestampMs - lastEventTime;
+            lastEventTime = timestampMs;
+
+            // Filters double triggers and micro-echo glitche errors
+            if (actualDelta < expectedIntervalMs * 0.6) return;
+
+            // Calculate instantaneous trace shift
+            const baseRemainder = actualDelta % expectedIntervalMs;
+            let drift = baseRemainder > expectedIntervalMs / 2 ? baseRemainder - expectedIntervalMs : baseRemainder;
+
+            // Track alternate beat errors (Tick vs Tock sequence calculations)
+            tickTockHistory.push(actualDelta);
+            if (tickTockHistory.length > 20) tickTockHistory.shift();
+
+            let computedBeatError = 0;
+            if (tickTockHistory.length >= 2) {
+                const len = tickTockHistory.length;
+                computedBeatError = Math.abs(tickTockHistory[len-1] - tickTockHistory[len-2]) / 2;
+            }
+
+            // Rolling window calculation for Daily Rate
+            if (tickTockHistory.length >= 8) {
+                const averageDelta = tickTockHistory.reduce((a,b) => a+b, 0) / tickTockHistory.length;
+                const errorRatio = (averageDelta - expectedIntervalMs) / expectedIntervalMs;
+                const dailyRateSec = Math.round(errorRatio * 86400);
+                
+                rateVal.innerText = (dailyRateSec >= 0 ? "+" : "") + dailyRateSec + " s/d";
+                rateVal.className = Math.abs(dailyRateSec) < 10 ? "text-xl font-bold text-emerald-400" : "text-xl font-bold text-amber-400";
+                beatVal.innerText = computedBeatError.toFixed(1) + " ms";
+            }
+
+            // Save trace profile coordinates
+            const isTick = tickTockHistory.length % 2 === 0;
+            dataPoints.push({
+                drift: drift,
+                isTick: isTick,
+                addedAt: Date.now()
+            });
+
+            // Restrict graph storage buffer cap limits
+            if (dataPoints.length > 800) dataPoints.shift();
+            renderTrace();
+        }
+
+        // --- SCROLLING CANVAS WATERFALL RENDERER ---
+        function renderTrace() {
+            const w = canvas.width / window.devicePixelRatio;
+            const h = canvas.height / window.devicePixelRatio;
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw center baseline target alignment marker grid
+            ctx.strokeStyle = 'rgba(31, 41, 55, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h);
+            ctx.stroke();
+
 
